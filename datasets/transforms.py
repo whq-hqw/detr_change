@@ -9,8 +9,9 @@ import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
-from util.box_ops import box_xyxy_to_cxcywh
+from util.box_ops import box_xyxy_to_cxcywh, box_cxcywh_to_xyxy
 from util.misc import interpolate
+from visualize import visualize_single
 
 
 def crop(image, target, region):
@@ -82,7 +83,7 @@ def resize(image, target, size, max_size=None):
             min_original_size = float(min((w, h)))
             max_original_size = float(max((w, h)))
             if max_original_size / min_original_size * size > max_size:
-                size = int(round(max_size * min_original_size / max_original_size))
+                size = int(max_size * min_original_size / max_original_size)
 
         if (w <= h and w == size) or (h <= w and h == size):
             return (h, w)
@@ -103,6 +104,10 @@ def resize(image, target, size, max_size=None):
             return get_size_with_aspect_ratio(image_size, size, max_size)
 
     size = get_size(image.size, size, max_size)
+    return _resize(image, target, size)
+
+
+def _resize(image, target, size):
     rescaled_image = F.resize(image, size)
 
     if target is None:
@@ -199,6 +204,31 @@ class RandomResize(object):
         return resize(img, target, size, self.max_size)
 
 
+class RandomResize_Crop(object):
+    def __init__(self, crop_range, max_size):
+        assert min(crop_range) > 0.25 and max(crop_range) <= 1, "Illeage value for range"
+        self.crop_range = crop_range
+        self.max_size = max_size
+
+    def __call__(self, img: PIL.Image.Image, target: dict):
+        # crop first
+        w = random.randint(int(img.width * self.crop_range[0]), int(img.width * self.crop_range[-1]))
+        h = random.randint(int(img.height * self.crop_range[0]), int(img.height * self.crop_range[-1]))
+        region = T.RandomCrop.get_params(img, [h, w])
+        img, target = crop(img, target, region)
+        # visualize_single(img, target)
+
+        # Resize according to aspect ratio
+        if w > h:
+            _w = self.max_size
+            _h = int(_w / w * h)
+        else:
+            _h = self.max_size
+            _w = int(_h / h * w)
+        #visualize_single(*_resize(img, target, (_h, _w)))
+        return _resize(img, target, (_h, _w))
+
+
 class RandomPad(object):
     def __init__(self, max_pad):
         self.max_pad = max_pad
@@ -207,6 +237,63 @@ class RandomPad(object):
         pad_x = random.randint(0, self.max_pad)
         pad_y = random.randint(0, self.max_pad)
         return pad(img, target, (pad_x, pad_y))
+
+
+class PadToFix(object):
+    def __init__(self, size, position="center"):
+        if isinstance(size, int):
+            self.target_size = (size, size)
+        else:
+            self.target_size = size
+        self.position = position.lower()
+
+    def pad_with_mask(self, image, target, param):
+        # assumes that we only pad on the bottom right corners
+        padded_image = F.pad(image, param)
+        assert padded_image.size == self.target_size
+        if target is None:
+            return padded_image, None
+        target = target.copy()
+        h, w = padded_image.size
+        mask = torch.ones(size=(h, w), dtype=torch.bool)
+        mask[param[1]: h - param[3], param[0]: w - param[2]] = 0
+        # should we do something wrt the original size?
+        target.update({"nest_mask": mask})
+        target["size"] = torch.tensor(padded_image.size[::-1])
+        target["boxes"] = target["boxes"] + torch.tensor([param[0], param[1], param[0], param[1]])
+        if "masks" in target:
+            _param = (param[0], param[2], param[1], param[3])
+            target['masks'] = torch.nn.functional.pad(target['masks'], _param)
+        return padded_image, target
+
+    def __call__(self, img, target):
+        w, h = img.size
+        if w > self.target_size[0] or h > self.target_size[1]:
+            raise RuntimeError("size of image %s is bigger than than padding size %s" %
+                               (str(img.size), str(self.target_size)))
+        if self.position == "center":
+            start_w = int((self.target_size[0] - w) / 2)
+            start_h = int((self.target_size[1] - h) / 2)
+            end_w = self.target_size[0] - w - start_w
+            end_h = self.target_size[1] - h - start_h
+            param = (start_w, start_h, end_w, end_h)
+        elif self.position == "start":
+            end_w = self.target_size[0] - w
+            end_h = self.target_size[1] - h
+            param = (0, 0, end_w, end_h)
+        elif self.position == "end":
+            start_w = self.target_size[0] - w
+            start_h = self.target_size[1] - h
+            param = (start_w, start_h, 0, 0)
+        elif self.position == "random":
+            start_w = random.randint(0, self.target_size[0] - w)
+            start_h = random.randint(0, self.target_size[1] - h)
+            end_w = self.target_size[0] - w - start_w
+            end_h = self.target_size[1] - h - start_h
+            param = (start_w, start_h, end_w, end_h)
+        else:
+            raise NotImplementedError()
+        return self.pad_with_mask(img, target, param)
 
 
 class RandomSelect(object):

@@ -267,8 +267,12 @@ def get_sha():
 
 def collate_fn(batch):
     batch = list(zip(*batch))
-    batch[0] = nested_tensor_from_tensor_list(batch[0])
-    return tuple(batch)
+    # batch[0] = nested_tensor_from_tensor_list(batch[0])
+    # return tuple(batch)
+    tensors = torch.stack(batch[0])
+    masks = torch.stack([target.pop("nest_mask") for target in batch[1]])
+    tensors *= torch.logical_not(masks).unsqueeze(1).repeat(1, 3, 1, 1)
+    return (NestedTensor(tensors, masks), batch[1])
 
 
 def _max_by_axis(the_list):
