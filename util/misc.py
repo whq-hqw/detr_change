@@ -326,6 +326,10 @@ class NestedTensor(object):
     def __repr__(self):
         return str(self.tensors)
 
+    def shape(self):
+        print("Tensor part shape: %s, Mask part shape: %s" %
+              (str(self.tensors.shape), str(self.mask.shape)))
+
 
 def setup_for_distributed(is_master):
     """

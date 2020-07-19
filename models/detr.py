@@ -60,9 +60,14 @@ class DETR(nn.Module):
             samples = nested_tensor_from_tensor_list(samples)
         features, pos = self.backbone(samples)
 
-        src, mask = features[-1].decompose()
-        assert mask is not None
-        hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
+        src = torch.cat([feature.tensors.flatten(2).permute(2, 0, 1)
+                         for feature in features])
+        mask = torch.cat([feature.mask.flatten(1) for feature in features], dim=1)
+        pos = torch.cat([p.flatten(2).permute(2, 0, 1) for p in pos])
+        # src, mask = features[-1].decompose()
+        # assert mask is not None
+        # hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
+        hs = self.transformer(src, mask, self.query_embed.weight, pos)
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
