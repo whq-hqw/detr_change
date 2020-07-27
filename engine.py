@@ -12,7 +12,8 @@ import torch
 import util.misc as utils
 from datasets.coco_eval import CocoEvaluator
 from datasets.panoptic_eval import PanopticEvaluator
-from visualize import visualize_batches
+from visualize import visualize_batches, visualize_result, visualize_single
+from util.box_ops import box_cxcywh_to_xyxy
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
@@ -92,6 +93,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         )
 
     for samples, targets in metric_logger.log_every(data_loader, 10, header):
+        # visualize_batches(samples, targets)
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
@@ -110,8 +112,13 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
                              **loss_dict_reduced_unscaled)
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
 
-        orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
+        orig_target_sizes = torch.stack([t["orig_size"].max() for t in targets], dim=0).repeat(2, 1).transpose(1, 0)
         results = postprocessors['bbox'](outputs, orig_target_sizes)
+        # for i, t in enumerate(targets):
+        #     targets[i]["boxes"] = box_cxcywh_to_xyxy(t["boxes"] * orig_target_sizes[i].float().repeat(2)).long()
+        #     print(targets[i]["boxes"])
+        # visualize_result(targets, results, threshold=0.7,
+        #                  save_path=os.path.expanduser("~/Pictures/20200720_coco_val2017"))
         if 'segm' in postprocessors.keys():
             target_sizes = torch.stack([t["size"] for t in targets], dim=0)
             results = postprocessors['segm'](results, outputs, orig_target_sizes, target_sizes)

@@ -1,4 +1,5 @@
-import math, random, os, PIL
+import math, random, os
+from PIL import Image
 import torch, cv2
 import numpy as np
 import torchvision
@@ -100,9 +101,10 @@ coco_label_map = {
 }
 
 
-def visualize_single(img, target, idx=0, name=None):
-    # mask = target["nest_mask"]
-    # mask_ratio = float(torch.sum(mask) / mask.nelements())
+def visualize_single(img, target, idx=0, name=None, pred_threshold=None,
+                     pred_result=None, save_path=None, verbose=False):
+    gt_color = (176, 90, 30) # blue
+    pred_color = (49, 56, 179) # red
     label = target["labels"].cpu().numpy()
     invTrans = torchvision.transforms.Compose([
         torchvision.transforms.Normalize(mean=[0., 0., 0.],
@@ -112,27 +114,55 @@ def visualize_single(img, target, idx=0, name=None):
     ])
     if isinstance(img, torch.Tensor):
         w, h = img.size(1), img.size(2)
-        bboxes = box_cxcywh_to_xyxy(target["boxes"].cpu() *
-                                    torch.tensor([h, w, h, w], dtype=torch.float32)).numpy().astype(int)
         canvas = invTrans(img).permute(1, 2, 0).numpy().astype(np.uint8)[:, :, (2, 1, 0)].copy()
-    elif isinstance(img, PIL.Image.Image):
+        bboxes = box_cxcywh_to_xyxy(target["boxes"].cpu() * torch.tensor([h, w, h, w], dtype=torch.float32)).numpy().astype(int)
+    elif isinstance(img, Image.Image):
         bboxes = target["boxes"].cpu().numpy().astype(int)
         canvas = np.array(img)[:, :, (2, 1, 0)].copy()
     else:
         raise TypeError()
     for i, bbox in enumerate(bboxes):
-        print(bbox)
-        canvas = cv2.rectangle(canvas, tuple(bbox[:2]), tuple(bbox[2:]), (0, 0, 255), 2)
+        if verbose:
+            print("\t %s" % str(bbox))
+        canvas = cv2.rectangle(canvas, tuple(bbox[:2]), tuple(bbox[2:]), gt_color, 2)
         canvas = cv2.putText(canvas, str(coco_label_map[int(label[i])]), tuple(bbox[:2]),
-                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-    print(canvas.shape)
-    # print("Mask True ratio: %.2f" % mask_ratio)
+                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, gt_color, 1, cv2.LINE_AA)
+    if pred_threshold is not None and pred_result is not None:
+        pred_score = pred_result["scores"].cpu()
+        pred_label = pred_result["labels"].cpu().numpy()[pred_score > pred_threshold]
+        pred_bboxes = pred_result["boxes"][pred_score > pred_threshold].long().cpu().numpy()
+        for i, bbox in enumerate(pred_bboxes):
+            print("\t %s" % str(bbox))
+            canvas = cv2.rectangle(canvas, tuple(bbox[:2]), tuple(bbox[2:]), pred_color, 1)
+            canvas = cv2.putText(canvas, str(coco_label_map[int(pred_label[i])]), tuple(bbox[:2]),
+                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, pred_color, 1, cv2.LINE_AA)
+    if verbose:
+        print("visualized img shape: %s" % str(canvas.shape))
+    if idx == -1:
+        idx = "%012d" % int(target["image_id"])
+    else:
+        idx = "%02d" % idx
     if name is None:
-        name = "tmp"
-    cv2.imwrite("/home/hwang/Pictures/%s_%02d.jpg"%(name, idx), canvas)
+        name = "%s" % idx
+    else:
+        name = "%s_%s" % (name, idx)
+    if save_path is None:
+        save_path = os.path.expanduser("~/Pictures")
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    cv2.imwrite("%s/%s.jpg"%(save_path, name), canvas)
 
 
-def visualize_batches(batch, targets, name=None):
+def visualize_batches(batch, targets, name=None, verbose=False):
     tensors = batch.tensors
     for i, tensor in enumerate(tensors):
-        visualize_single(tensor.cpu(), targets[i], idx=i, name=name)
+        visualize_single(tensor.cpu(), targets[i], idx=i, name=name, verbose=verbose)
+
+
+def visualize_result(targets, pred_results, threshold=0.7, save_path=None):
+    assert len(targets) == len(pred_results)
+    for i, t in enumerate(targets):
+        img_idx = "%012d.jpg" % int(t["image_id"])
+        img = Image.open(os.path.join("/raid/dataset/detection/coco/val2017", img_idx)).convert("RGB")
+        visualize_single(img, t, idx=-1, pred_threshold=threshold,
+                         pred_result=pred_results[i], save_path=save_path)

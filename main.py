@@ -25,7 +25,7 @@ def get_args_parser():
     parser.add_argument('--lr_backbone', default=1e-5, type=float)
     parser.add_argument('--batch_size', default=12, type=int)
     parser.add_argument('--weight_decay', default=1e-4, type=float)
-    parser.add_argument('--epochs', default=150, type=int)
+    parser.add_argument('--epochs', default=200, type=int)
     parser.add_argument('--lr_drop', default=200, type=int)
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
@@ -93,11 +93,11 @@ def get_args_parser():
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--resume', default='', help='resume from checkpoint')
+    parser.add_argument('--resume', default='/raid/dataset/detection/detr_exp/20200720/checkpoint.pth', help='resume from checkpoint')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--num_workers', default=6, type=int)
+    parser.add_argument('--num_workers', default=0, type=int)
 
     # distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
@@ -173,11 +173,16 @@ def main(args):
         checkpoint = torch.load(args.frozen_weights, map_location='cpu')
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
-    date = datetime.datetime.now().replace(tzinfo=timezone.utc).strftime('%Y%m%d')
-    output_dir = os.path.join(args.output_dir, date)
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
-    output_dir = Path(output_dir)
+    if args.distributed:
+        # Only record log in distributed training mode
+        date = datetime.datetime.now().replace(tzinfo=timezone.utc).strftime('%Y%m%d')
+        output_dir = os.path.join(args.output_dir, date)
+        if not os.path.exists(output_dir):
+            os.mkdir(output_dir)
+        output_dir = Path(output_dir)
+    else:
+        args.output_dir = None
+
     if args.resume:
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
@@ -202,9 +207,9 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             sampler_train.set_epoch(epoch)
-        train_stats = train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch,
-            args.clip_max_norm)
+        # train_stats = train_one_epoch(
+        #     model, criterion, data_loader_train, optimizer, device, epoch,
+        #     args.clip_max_norm)
         lr_scheduler.step()
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
