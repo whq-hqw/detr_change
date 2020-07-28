@@ -112,6 +112,7 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
                              **loss_dict_reduced_unscaled)
         metric_logger.update(class_error=loss_dict_reduced['class_error'])
 
+        #orig_target_sizes = torch.stack([t["orig_size"] for t in targets], dim=0)
         orig_target_sizes = torch.stack([t["orig_size"].max() for t in targets], dim=0).repeat(2, 1).transpose(1, 0)
         results = postprocessors['bbox'](outputs, orig_target_sizes)
         # for i, t in enumerate(targets):

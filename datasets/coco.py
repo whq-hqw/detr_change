@@ -112,15 +112,14 @@ class ConvertCocoPolysToMask(object):
         return image, target
 
 
-def make_coco_transforms(image_set):
+def make_coco_transforms(args, image_set):
 
     normalize = T.Compose([
         T.ToTensor(),
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
-
-    scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768]
-    max_size = 512
+    # scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768]
+    # max_size = 512
 
     if image_set == 'train':
         return T.Compose([
@@ -133,18 +132,18 @@ def make_coco_transforms(image_set):
             #         T.RandomResize(scales, max_size=max_size),
             #     ])
             # ),
-            T.RandomResize_Crop(crop_range=[0.5, 1], max_size=max_size),
+            T.RandomResize_Crop(crop_range=[0.5, 1], max_size=args.train_size),
             # T.RandomResize([400, 500, 600]),
             # T.RandomSizeCrop(384, 600),
             # T.RandomResize(scales, max_size=512),
-            T.PadToFix(max_size, position="random"),
+            T.PadToFix(args.train_size, position="random"),
             normalize,
         ])
 
     if image_set == 'val':
         return T.Compose([
-            T.RandomResize([max_size], max_size=max_size),
-            T.PadToFix(max_size, position="start"),
+            T.RandomResize([args.val_size], max_size=args.val_size),
+            T.PadToFix(args.val_size, position="start"),
             normalize,
         ])
 
@@ -161,5 +160,5 @@ def build(image_set, args):
     }
 
     img_folder, ann_file = PATHS[image_set]
-    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks)
+    dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(args, image_set), return_masks=args.masks)
     return dataset
