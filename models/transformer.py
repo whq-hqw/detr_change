@@ -17,16 +17,53 @@ from torch import nn, Tensor
 
 class Transformer(nn.Module):
 
-    def __init__(self, d_model=512, nhead=8, num_encoder_layers=6,
+    def __init__(self, args, d_model=512, nhead=8, num_encoder_layers=6,
                  num_decoder_layers=6, dim_feedforward=2048, dropout=0.1,
                  activation="relu", normalize_before=False,
                  return_intermediate_dec=False):
         super().__init__()
+        self.args = args
 
-        encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
-                                                dropout, activation, normalize_before)
-        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
-        self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
+        if self.args.model_arch.lower() == "fpn_v1":
+            self.down_sample = nn.ModuleList([])
+            self.concat_conv = nn.ModuleList([])
+            for _ in self.args.output_layers[:-1]:
+                if self.args.down_sample.lower() == "avg_pool":
+                    self.down_sample.append(nn.AvgPool2d(kernel_size=2, stride=2))
+                elif self.args.down_sample.lower() == "max_pool":
+                    self.down_sample.append(nn.MaxPool2d(kernel_size=2, stride=2))
+                elif self.args.down_sample.lower() == "conv":
+                    self.down_sample.append(nn.Conv2d(d_model, d_model, kernel_size=3, stride=2, padding=1))
+                else:
+                    raise NotImplementedError()
+                if self.args.layer_comb.lower() == "conv":
+                    self.concat_conv.append(nn.Conv2d(d_model * 2, d_model, kernel_size=1, stride=1))
+            if self.args.layer_comb.lower() != "conv":
+                del self.concat_conv
+            if self.args.diff_encoder and isinstance(num_encoder_layers, list):
+                assert len(num_encoder_layers) == len(self.args.output_layers)
+                self.encoder = nn.ModuleList([])
+                encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
+                                                        dropout, activation, normalize_before)
+                encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+                for layer_num in num_encoder_layers:
+                    self.encoder.append(TransformerEncoder(encoder_layer, int(layer_num), encoder_norm))
+            else:
+                if isinstance(num_encoder_layers, list):
+                    assert len(num_encoder_layers) == 1
+                    num_encoder_layers = int(num_encoder_layers[0])
+                encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
+                                                        dropout, activation, normalize_before)
+                encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+                self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
+        else:
+            if isinstance(num_encoder_layers, list):
+                assert len(num_encoder_layers) == 1
+                num_encoder_layers = int(num_encoder_layers[0])
+            encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
+                                                    dropout, activation, normalize_before)
+            encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
+            self.encoder = TransformerEncoder(encoder_layer, num_encoder_layers, encoder_norm)
 
         decoder_layer = TransformerDecoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
@@ -45,18 +82,62 @@ class Transformer(nn.Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(self, src, mask, query_embed, pos_embed):
+        if self.args.model_arch.lower() == "vanilla":
+            bs, c, h, w = src.shape
+            mask = mask.flatten(1)
+            memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        elif self.args.model_arch.lower() == "fpn":
+            mask = torch.cat([feature.mask.flatten(1) for feature in src], dim=1)
+            src = torch.cat([feature.tensors.flatten(2).permute(2, 0, 1)
+                             for feature in src])
+            pos_embed = torch.cat([p.flatten(2).permute(2, 0, 1) for p in pos_embed])
+            memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        elif self.args.model_arch.lower() == "fpn_v1":
+            prev_memory = None
+            for i, f in enumerate(src):
+                bs, c, h, w = f.tensors.shape
+                src = f.tensors.flatten(2).permute(2, 0, 1)
+                if prev_memory is not None:
+                    prev_memory = self.down_sample[i-1](prev_memory)
+                mask = f.mask.flatten(1)
+                pos = pos_embed[i].flatten(2).permute(2, 0, 1)
+                if self.args.diff_encoder:
+                    memory = self.encoder[i](src, src_key_padding_mask=mask, pos=pos)
+                else:
+                    memory = self.encoder(src, src_key_padding_mask=mask, pos=pos)
+                memory = memory.permute(1, 2, 0).view(bs, c, h, w)
+                if prev_memory is None:
+                    prev_memory = memory
+                else:
+                    if self.args.layer_comb.lower() == "plus":
+                        prev_memory += memory
+                    elif self.args.layer_comb.lower() == "conv":
+                        prev_memory = self.concat_conv[i-1](torch.cat([memory, prev_memory], dim=1))
+                    else:
+                        raise NotImplementedError()
+            memory = prev_memory.flatten(2).permute(2, 0, 1)
+            pos_embed = pos
+        else:
+            raise NotImplementedError()
+
+        # hs = self.transformer(src, mask, self.query_embed.weight, pos)
+
+
         # flatten NxCxHxW to HWxNxC
         #bs, c, h, w = src.shape
         #src = src.flatten(2).permute(2, 0, 1)
         #pos_embed = pos_embed.flatten(2).permute(2, 0, 1)
         query_embed = query_embed.unsqueeze(1).repeat(1, src.size(1), 1)
-        mask = mask.flatten(1)
+        #mask = mask.flatten(1)
 
         tgt = torch.zeros_like(query_embed)
-        memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
+        #memory = self.encoder(src, src_key_padding_mask=mask, pos=pos_embed)
         hs = self.decoder(tgt, memory, memory_key_padding_mask=mask,
                           pos=pos_embed, query_pos=query_embed)
-        return hs.transpose(1, 2)#, memory.permute(1, 2, 0).view(bs, c, h, w)
+        if self.args.model_arch.lower() == "vanilla":
+            return hs.transpose(1, 2), memory.permute(1, 2, 0).view(bs, c, h, w)
+        else:
+            return hs.transpose(1, 2), None
 
 
 class TransformerEncoder(nn.Module):
@@ -275,6 +356,7 @@ def _get_clones(module, N):
 
 def build_transformer(args):
     return Transformer(
+        args,
         d_model=args.hidden_dim,
         dropout=args.dropout,
         nhead=args.nheads,

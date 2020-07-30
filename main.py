@@ -23,15 +23,15 @@ def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
     parser.add_argument('--lr', default=1e-4, type=float)
     parser.add_argument('--lr_backbone', default=1e-5, type=float)
-    parser.add_argument('--batch_size', default=12, type=int)
+    parser.add_argument('--batch_size', default=4, type=int)
     parser.add_argument('--weight_decay', default=1e-4, type=float)
     parser.add_argument('--epochs', default=200, type=int)
     parser.add_argument('--lr_drop', default=200, type=int)
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
 
-    parser.add_argument('--train_size', default=768, type=int)
-    parser.add_argument('--val_size', default=768, type=int)
+    parser.add_argument('--train_size', default=512, type=int)
+    parser.add_argument('--val_size', default=512, type=int)
 
     # Model parameters
     parser.add_argument('--frozen_weights', type=str, default=None,
@@ -39,16 +39,23 @@ def get_args_parser():
     # * Backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
                         help="Name of the convolutional backbone to use")
-    parser.add_argument('--fpn', action='store_true',
-                        help="using feature pyramid in backbone")
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
                         help="Type of positional embedding to use on top of the image features")
 
     # * Transformer
-    parser.add_argument('--enc_layers', default=6, type=int,
-                        help="Number of encoding layers in the transformer")
+    parser.add_argument('--model_arch', default="fpn", type=str, choices=["vanilla", "fpn", "fpn_v1"],
+                        help="define the model architecture")
+    parser.add_argument('--down_sample', default="avg_pool", type=str, choices=["avg_pool", "max_pool", "conv"],
+                        help="define the model architecture")
+    parser.add_argument('--layer_comb', default="conv", type=str, choices=["plus", "conv"],
+                        help="define the model architecture")
+    parser.add_argument("--output_layers", nargs='+', default=["1", "2", "3"])
+    parser.add_argument("--enc_layers", nargs='+', default=["6"])
+    parser.add_argument('--diff_encoder', action='store_true')
+    # parser.add_argument('--enc_layers', default=6, type=int,
+    #                     help="Number of encoding layers in the transformer")
     parser.add_argument('--dec_layers', default=6, type=int,
                         help="Number of decoding layers in the transformer")
     parser.add_argument('--dim_feedforward', default=2048, type=int,
@@ -93,7 +100,9 @@ def get_args_parser():
 
     parser.add_argument('--output_dir', default='/raid/dataset/detection/detr_exp',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--device', default='cuda',
+    parser.add_argument('--exp_name', default='',
+                        help='experiment name')
+    parser.add_argument('--device', default='cuda:1',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--resume', default='/raid/dataset/detection/detr_exp/20200720/checkpoint.pth', help='resume from checkpoint')
@@ -179,14 +188,17 @@ def main(args):
     if args.distributed:
         # Only record log in distributed training mode
         date = datetime.datetime.now().replace(tzinfo=timezone.utc).strftime('%Y%m%d')
-        output_dir = os.path.join(args.output_dir, date)
+        if args.exp_name:
+            output_dir = os.path.join(args.output_dir, "%s_%s" % (date, args.exp_name))
+        else:
+            output_dir = os.path.join(args.output_dir, date)
         if not os.path.exists(output_dir):
             os.mkdir(output_dir)
         output_dir = Path(output_dir)
     else:
         args.output_dir = None
 
-    if args.resume:
+    if args.resume and os.path.exists(args.resume):
         if args.resume.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)

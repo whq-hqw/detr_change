@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 from typing import Dict, List
 
 from util.misc import NestedTensor, is_main_process
@@ -83,16 +84,18 @@ class BackboneBase(nn.Module):
 
 class Backbone(BackboneBase):
     """ResNet backbone with frozen BatchNorm."""
-    def __init__(self, name: str,
+    def __init__(self, args,
                  train_backbone: bool,
-                 return_interm_layers: bool,
-                 dilation: bool):
-        # backbone = getattr(torchvision.models, name)(
-        #     replace_stride_with_dilation=[False, False, dilation],
-        #     pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)
-        backbone = torchvision.models.detection.backbone_utils\
-            .resnet_fpn_backbone(name, train_backbone)
-        num_channels = 512 if name in ('resnet18', 'resnet34') else 2048
+                 return_interm_layers: bool):
+        if args.model_arch.lower() == "vanilla":
+            backbone = getattr(torchvision.models, args.backbone)(
+                replace_stride_with_dilation=[False, False, args.dilation],
+                pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)
+        elif args.model_arch.lower() in ["fpn", "fpn_v1"]:
+            backbone = resnet_fpn_backbone(args.backbone, is_main_process())
+        else:
+            raise NotImplementedError()
+        num_channels = 512 if args.backbone in ('resnet18', 'resnet34') else 2048
         super().__init__(backbone, train_backbone, num_channels, return_interm_layers)
 
 
@@ -119,7 +122,7 @@ def build_backbone(args):
     position_embedding = build_position_encoding(args)
     train_backbone = args.lr_backbone > 0
     return_interm_layers = args.masks
-    backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
-    model = Joiner(backbone, position_embedding, ["2", "3", "pool"])
+    backbone = Backbone(args, train_backbone, return_interm_layers)
+    model = Joiner(backbone, position_embedding, args.output_layers)
     model.num_channels = backbone.num_channels
     return model

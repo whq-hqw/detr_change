@@ -11,16 +11,16 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                        accuracy, get_world_size, interpolate,
                        is_dist_avail_and_initialized)
 
-from .backbone import build_backbone
-from .matcher import build_matcher
-from .segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
-                           dice_loss, sigmoid_focal_loss)
-from .transformer import build_transformer
+from models.backbone import build_backbone
+from models.matcher import build_matcher
+from models.segmentation import (DETRsegm, PostProcessPanoptic, PostProcessSegm,
+                                 dice_loss, sigmoid_focal_loss)
+from models.transformer import build_transformer
 
 
 class DETR(nn.Module):
     """ This is the DETR module that performs object detection """
-    def __init__(self, backbone, transformer, num_classes, num_queries, aux_loss=False):
+    def __init__(self, args, backbone, transformer, num_classes, num_queries, aux_loss=False):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -31,13 +31,15 @@ class DETR(nn.Module):
             aux_loss: True if auxiliary decoding losses (loss at each decoder layer) are to be used.
         """
         super().__init__()
+        self.args = args
         self.num_queries = num_queries
         self.transformer = transformer
         hidden_dim = transformer.d_model
         self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
-        self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
+        if self.args.model_arch.lower() == "vanilla":
+            self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
 
@@ -60,14 +62,21 @@ class DETR(nn.Module):
             samples = nested_tensor_from_tensor_list(samples)
         features, pos = self.backbone(samples)
 
-        src = torch.cat([feature.tensors.flatten(2).permute(2, 0, 1)
-                         for feature in features])
-        mask = torch.cat([feature.mask.flatten(1) for feature in features], dim=1)
-        pos = torch.cat([p.flatten(2).permute(2, 0, 1) for p in pos])
+        # src = torch.cat([feature.tensors.flatten(2).permute(2, 0, 1)
+        #                  for feature in features])
+        # mask = torch.cat([feature.mask.flatten(1) for feature in features], dim=1)
+        # pos = torch.cat([p.flatten(2).permute(2, 0, 1) for p in pos])
         # src, mask = features[-1].decompose()
         # assert mask is not None
         # hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
-        hs = self.transformer(src, mask, self.query_embed.weight, pos)
+        # hs = self.transformer(src, mask, self.query_embed.weight, pos)
+
+        if self.args.model_arch.lower() == "vanilla":
+            src, mask = features[-1].decompose()
+            assert mask is not None
+            hs, _ = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])
+        else:
+            hs, _ = self.transformer(features, None, self.query_embed.weight, pos)
 
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
@@ -317,6 +326,7 @@ def build(args):
     transformer = build_transformer(args)
 
     model = DETR(
+        args,
         backbone,
         transformer,
         num_classes=num_classes,
@@ -352,3 +362,21 @@ def build(args):
             postprocessors["panoptic"] = PostProcessPanoptic(is_thing_map, threshold=0.85)
 
     return model, criterion, postprocessors
+
+if __name__ == '__main__':
+    import argparse
+    from util.misc import NestedTensor
+    from main import get_args_parser
+
+    parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
+    args = parser.parse_args()
+
+    tensor = torch.randn(4, 3, 512, 512)
+    mask = (tensor > 0)[:, 0, :, :]
+    nt = NestedTensor(tensor, mask)
+
+    model, criterion, _ = build(args)
+    y = model(nt)
+    for k, v in y.items():
+        if isinstance(v, torch.Tensor):
+            print("%s: %s" % (k, str(v.shape)))
