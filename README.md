@@ -1,9 +1,5 @@
 **DE⫶TR**: End-to-End Object Detection with Transformers(Originally From FAIR)
 ========
-### Will be a private repo on 31th July, 2020 for research purpose.
-Hello all, thanks for intrested in this repo, this repo is a copy from Facebookresearch/DETR, as I decided to improve the performance and extend its applications, so this repo will temporarily become a private repo on **31th July, 2020** in order to test many different functions. 
-
-If you are interested in this repo, please let me know(hqwang@icloud.com), I'll make you as a collaborator so as to do research together.
 
 Here is a list of paper I found worth investigating:
 01. Self-Attention with Relative Position Representations
@@ -26,8 +22,6 @@ Here is a list of paper I found worth investigating:
 18. BP-Transformer
 19. Compressive Transformer
 20. Reformer
-
-If there's any license violation, please contact me(hqwang@icloud.com) ASAP.
 
 
 <table>
