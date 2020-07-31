@@ -8,8 +8,8 @@
 #parser.add_argument('--diff_encoder', action='store_true')
 
 # Basic Experiment(BE)
-python3 -m torch.distributed.launch --nproc_per_node=16 --use_env main.py --batch_size 4 --num_worker 4 --epoch 50 \
---model_arch fpn_v1 --down_sample conv --layer_comb conv --output_layers 2 3 --exp_name be
+# python3 -m torch.distributed.launch --nproc_per_node=16 --use_env main.py --batch_size 4 --num_worker 4 --epoch 50 \
+# --model_arch fpn_v1 --down_sample conv --layer_comb conv --output_layers 2 3 --exp_name be
 
 # BE Var 1: Increase the FPN layer
 python3 -m torch.distributed.launch --nproc_per_node=16 --use_env main.py --batch_size 4 --num_worker 4 --epoch 50 \

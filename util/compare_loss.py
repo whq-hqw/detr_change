@@ -45,5 +45,5 @@ def compare_log(tar_date, exp_name=""):
         print("")
 
 if __name__ == '__main__':
-    target_date = "20200720"
-    compare_log(target_date, exp_name="FPN")
+    target_date = "20200731_be"
+    compare_log(target_date, exp_name="FPN_v1")
