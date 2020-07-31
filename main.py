@@ -105,7 +105,8 @@ def get_args_parser():
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=42, type=int)
-    parser.add_argument('--resume', default='/raid/dataset/detection/detr_exp/20200720/checkpoint.pth',
+    parser.add_argument('--finetune', action='store_true')
+    parser.add_argument('--resume_from', default='/raid/dataset/detection/detr_exp/20200720/checkpoint.pth',
                         help='path to other checkpoint file')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
@@ -186,7 +187,7 @@ def main(args):
         checkpoint = torch.load(args.frozen_weights, map_location='cpu')
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
-    if args.distributed:
+    if args.distributed and utils.is_main_process():
         # Only record log in distributed training mode
         date = datetime.datetime.now().replace(tzinfo=timezone.utc).strftime('%Y%m%d')
         if args.exp_name:
@@ -199,12 +200,13 @@ def main(args):
     else:
         args.output_dir = None
 
-    if args.resume and os.path.exists(args.resume):
-        if args.resume.startswith('https'):
+    if args.finetune and os.path.exists(args.resume_from):
+        if args.resume_from.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
-                args.resume, map_location='cpu', check_hash=True)
+                args.resume_from, map_location='cpu', check_hash=True)
         else:
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume_from, map_location='cpu')
+        print("Load model from %s." % args.resume_from)
         model_without_ddp.load_state_dict(checkpoint['model'])
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
