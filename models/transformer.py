@@ -38,7 +38,7 @@ class Transformer(nn.Module):
                     raise NotImplementedError()
                 if self.args.layer_comb.lower() == "conv":
                     self.concat_conv.append(nn.Conv2d(d_model * 2, d_model, kernel_size=1, stride=1))
-            if self.args.layer_comb.lower() != "conv":
+            if self.args.layer_comb.lower( ) != "conv":
                 del self.concat_conv
             if self.args.diff_encoder and isinstance(num_encoder_layers, list):
                 assert len(num_encoder_layers) == len(self.args.output_layers)

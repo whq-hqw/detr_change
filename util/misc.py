@@ -11,7 +11,7 @@ from collections import defaultdict, deque
 import datetime
 import pickle
 from typing import Optional, List
-
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch import Tensor
@@ -435,3 +435,67 @@ def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corne
         return _new_empty_tensor(input, output_shape)
     else:
         return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
+
+
+def gen_attention_graph(width, height=None, full_graph=0, window_size=0, dilation=0, debug=False):
+    if height is None:
+        height = width
+    assert isinstance(width, list) and isinstance(height, list)
+    assert len(width) == len(height)
+    if isinstance(full_graph, int):
+        full_graph = [full_graph]
+    if isinstance(full_graph, list):
+        assert len(full_graph) <= len(width) and max(full_graph) < len(width)
+    stride_w, stride_h = [], []
+    for i in range(len(width) - 1):
+        s_w = width[i + 1] / width[i]
+        s_h = height[i + 1] / height[i]
+        assert s_w.is_integer() and s_h.is_integer()
+        stride_w.append(int(s_w))
+        stride_h.append(int(s_h))
+    # Create graph
+    size = sum([w * height[i] for i, w in enumerate(width)])
+    graph = np.zeros((size, size), dtype=np.uint8)
+    node_map = [np.arange(w * height[i]).reshape((height[i], w)) for i, w in enumerate(width)]
+    # Assign weight to graph
+    prev_coord = 0
+    for layer in range(len(width)):
+        if debug:
+            print(layer)
+            color = int((1 - (float(layer) / len(width))) * 255)
+        else:
+            color = 1
+        if layer - 2 < 0:
+            y_offset = 0
+        else:
+            y_offset = sum([w * height[i] for i, w in enumerate(width[:layer - 1])])
+        for i in range(width[layer] * height[layer]):
+            if layer in full_graph:
+                graph[prev_coord + i, prev_coord: prev_coord + (width[layer] * height[layer])] = color
+            else:
+                if layer == 0:
+                    continue
+                else:
+                    coord = ((i % width[layer]) // stride_w[layer - 1], (i // width[layer]) // stride_h[layer - 1])
+                    y_coord = node_map[layer-1][coord[1], coord[0]]
+                    y_coord = y_coord + y_offset
+                    if debug:
+                        print("%d mapped to coord (%d, %d)" % (prev_coord + i, y_coord, prev_coord + i))
+                    graph[y_coord, prev_coord + i] = color
+        prev_coord += width[layer] * height[layer]
+    if debug:
+        graph = torch.from_numpy(graph)
+        graph = graph + graph.transpose(1, 0) + torch.eye(size) * 255
+    else:
+        graph = torch.from_numpy(graph).bool()
+        graph = graph + graph.transpose(1, 0) + torch.eye(size)
+    return graph
+
+
+if __name__ == '__main__':
+    import cv2
+    spec = [2, 4, 8]
+    attn_graph = gen_attention_graph(width=spec).numpy()
+    spec = [str(s) for s in spec]
+    cv2.imwrite(os.path.expanduser("~/Pictures/attn_graph_%s.jpg" % ("-".join(spec))),
+                attn_graph.astype(np.uint8))

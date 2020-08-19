@@ -25,4 +25,4 @@ python3 -m torch.distributed.launch --nproc_per_node=16 --use_env main.py --batc
 
 # BE Var 2: Increase the FPN layer
 python3 -m torch.distributed.launch --nproc_per_node=16 --use_env main.py --batch_size 2 --num_worker 4 --epoch 50 \
---model_arch fpn_v1 --down_sample conv --layer_comb conv --output_layers 1 2 3 --exp_name be_var1
+--model_arch fpn_v1 --down_sample conv --layer_comb conv --output_layers 1 2 3 --exp_name be_var2

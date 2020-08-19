@@ -1,9 +1,12 @@
 """
 Plotting utilities to visualize training logs.
 """
+import os
+import numpy as np
 import torch
 import pandas as pd
-import seaborn as sns
+# import seaborn as sns
+import scipy.signal as ss
 import matplotlib.pyplot as plt
 
 from pathlib import Path, PurePath
@@ -99,3 +102,50 @@ def plot_precision_recall(files, naming_scheme='iter'):
     axs[1].set_title('Scores / Recall')
     axs[1].legend(names)
     return fig, axs
+
+
+def plot_curves(line_data, line_labels, save_path=None, name=None, epoch=None,
+                window=5, fig_size=(18, 6), bound=None, grid=True, ax=None, title=None):
+    save_fig = False
+    if ax is None:
+        fig, ax = plt.subplots(1, figsize=fig_size)
+        save_fig = True
+    t = np.asarray(list(range(len(line_data[0]))))
+    if ss and window > 1 and window % 2 == 1:
+        line_data = [ss.savgol_filter(_, window, 2) for _ in line_data]
+    for i, loss in enumerate(line_data):
+        ax.plot(t, loss, label=line_labels[i])
+    ax.legend(loc='upper right')
+    ax.set_xlabel('epoch')
+    ax.grid(grid)
+    if title:
+        ax.set_title(title)
+    if bound is not None:
+        ax.set_ylim(bound["low"], bound["high"])
+    if save_fig and save_path:
+        ep = "_" + str(int(epoch)).zfill(4) if epoch is not None else ""
+        img_name = name + ep + ".jpg"
+        plt.savefig(os.path.join(save_path, img_name))
+        plt.close()
+
+
+def plot_multi_loss_distribution(multi_line_data, multi_line_labels, save_path=None, name=None,
+                                 epoch=None, window=5, fig_size=(18, 12), bound=None,
+                                 grid=True, titles=None):
+    assert len(multi_line_data) == len(multi_line_labels)
+    if titles is None:
+        titles = [None] * len(multi_line_data)
+    if bound is None:
+        bound = [None] * len(multi_line_data)
+    assert len(multi_line_data) == len(titles) == len(bound)
+    fig, axes = plt.subplots(len(multi_line_data), 1, figsize=fig_size)
+    for i, losses in enumerate(multi_line_data):
+        plot_curves(losses, multi_line_labels[i], window=window,
+                    bound=bound[i], grid=grid, ax=axes[i], title=titles[i])
+    if save_path:
+        ep = "_" + str(int(epoch)).zfill(4) if epoch is not None else ""
+        img_name = name + ep + ".jpg"
+        plt.savefig(os.path.join(save_path, img_name))
+    else:
+        plt.show()
+    plt.close()

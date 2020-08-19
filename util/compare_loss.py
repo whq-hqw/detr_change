@@ -1,11 +1,8 @@
-import os, glob, random
-from os.path import *
 import json
-import scipy
-import numpy as np
-import matplotlib.pyplot as plt
+from os.path import *
 
 root = "/raid/dataset/detection/detr_exp"
+
 
 def load_log(path):
     content = []
@@ -44,6 +41,7 @@ def compare_log(tar_date, exp_name=""):
                           (exp_name, loss_name, proportion))
         print("")
 
+
 if __name__ == '__main__':
-    target_date = "20200731_be"
+    target_date = "20200731_be_var1-1"
     compare_log(target_date, exp_name="FPN_v1")
