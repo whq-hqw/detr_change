@@ -45,13 +45,13 @@ def get_args_parser():
                         help="Type of positional embedding to use on top of the image features")
 
     # * Transformer
-    parser.add_argument('--model_arch', default="fpn", type=str, choices=["vanilla", "fpn", "fpn_v1"],
+    parser.add_argument('--model_arch', default="vanilla", type=str, choices=["vanilla", "fpn", "fpn_v1"],
                         help="define the model architecture")
     parser.add_argument('--down_sample', default="avg_pool", type=str, choices=["avg_pool", "max_pool", "conv"],
                         help="define the model architecture")
     parser.add_argument('--layer_comb', default="conv", type=str, choices=["plus", "conv"],
                         help="define the model architecture")
-    parser.add_argument("--output_layers", nargs='+', default=["1", "2", "3"])
+    parser.add_argument("--output_layers", nargs='+', default=["0"])
     parser.add_argument("--enc_layers", nargs='+', default=["6"])
     parser.add_argument('--diff_encoder', action='store_true')
     # parser.add_argument('--enc_layers', default=6, type=int,

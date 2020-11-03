@@ -363,6 +363,7 @@ def build(args):
 
     return model, criterion, postprocessors
 
+
 if __name__ == '__main__':
     import argparse
     from util.misc import NestedTensor
@@ -371,7 +372,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
 
-    tensor = torch.randn(4, 3, 512, 512)
+    tensor = torch.randn(4, 3, 384, 384)
     mask = (tensor > 0)[:, 0, :, :]
     nt = NestedTensor(tensor, mask)
 

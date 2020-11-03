@@ -485,10 +485,10 @@ def gen_attention_graph(width, height=None, full_graph=0, window_size=0, dilatio
         prev_coord += width[layer] * height[layer]
     if debug:
         graph = torch.from_numpy(graph)
-        graph = graph + graph.transpose(1, 0) + torch.eye(size) * 255
+        graph = (graph + graph.transpose(1, 0) + torch.eye(size)) * 255
     else:
         graph = torch.from_numpy(graph).bool()
-        graph = graph + graph.transpose(1, 0) + torch.eye(size)
+        graph = (graph + graph.transpose(1, 0) + torch.eye(size))
     return graph
 
 
@@ -498,4 +498,4 @@ if __name__ == '__main__':
     attn_graph = gen_attention_graph(width=spec).numpy()
     spec = [str(s) for s in spec]
     cv2.imwrite(os.path.expanduser("~/Pictures/attn_graph_%s.jpg" % ("-".join(spec))),
-                attn_graph.astype(np.uint8))
+                attn_graph.astype(np.uint8) * 255)

@@ -105,7 +105,8 @@ def plot_precision_recall(files, naming_scheme='iter'):
 
 
 def plot_curves(line_data, line_labels, save_path=None, name=None, epoch=None,
-                window=5, fig_size=(18, 6), bound=None, grid=True, ax=None, title=None):
+                window=5, fig_size=(18, 6), bound=None, grid=True, ax=None, title=None,
+                legend_loc="upper right"):
     save_fig = False
     if ax is None:
         fig, ax = plt.subplots(1, figsize=fig_size)
@@ -115,7 +116,7 @@ def plot_curves(line_data, line_labels, save_path=None, name=None, epoch=None,
         line_data = [ss.savgol_filter(_, window, 2) for _ in line_data]
     for i, loss in enumerate(line_data):
         ax.plot(t, loss, label=line_labels[i])
-    ax.legend(loc='upper right')
+    ax.legend(loc=legend_loc)
     ax.set_xlabel('epoch')
     ax.grid(grid)
     if title:
@@ -131,7 +132,7 @@ def plot_curves(line_data, line_labels, save_path=None, name=None, epoch=None,
 
 def plot_multi_loss_distribution(multi_line_data, multi_line_labels, save_path=None, name=None,
                                  epoch=None, window=5, fig_size=(18, 12), bound=None,
-                                 grid=True, titles=None):
+                                 grid=True, titles=None, legend_loc="upper right"):
     assert len(multi_line_data) == len(multi_line_labels)
     if titles is None:
         titles = [None] * len(multi_line_data)
@@ -141,7 +142,8 @@ def plot_multi_loss_distribution(multi_line_data, multi_line_labels, save_path=N
     fig, axes = plt.subplots(len(multi_line_data), 1, figsize=fig_size)
     for i, losses in enumerate(multi_line_data):
         plot_curves(losses, multi_line_labels[i], window=window,
-                    bound=bound[i], grid=grid, ax=axes[i], title=titles[i])
+                    bound=bound[i], grid=grid, ax=axes[i], title=titles[i], legend_loc=legend_loc)
+    plt.tight_layout()
     if save_path:
         ep = "_" + str(int(epoch)).zfill(4) if epoch is not None else ""
         img_name = name + ep + ".jpg"

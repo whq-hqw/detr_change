@@ -65,6 +65,10 @@ class HungarianMatcher(nn.Module):
         # Compute the classification cost. Contrary to the loss, we don't use the NLL,
         # but approximate it in 1 - proba[target class].
         # The 1 is a constant that doesn't change the matching, it can be ommitted.
+        # 在out_prob中，dim1中每一维都代表了对每个该bbox的所属类别的概率，由于有92个类，所以有92个数字
+        # 由于candidate box远比实际的box数量要多，因此并不知道到底哪个candidate能与gt box进行匹配
+        # 所以先获取所有tgt_id，并在out_ptob中取出对应的概率，因为知道在众多candidate中必有一个bbox与某个gt bbox最为匹配
+        # 之所以用减号就是想知道与理想概率1的差距，但这里加不加1其实无所谓
         cost_class = -out_prob[:, tgt_ids]
 
         # Compute the L1 cost between boxes
